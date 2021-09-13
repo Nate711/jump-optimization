@@ -1,36 +1,46 @@
 import multiprocessing
 from multiprocessing.spawn import freeze_support
+import matplotlib
+from matplotlib import animation
 import quadruped_lib
 from quadruped_lib import dynamics, kinematics
 from quadruped_lib import kinematics_config
 
 # from jump_config_optimization import static_torque_optimizer
-import static_torque_optimizer
+import static_torque_optimizer, visualization, plot_util
 
 # from quadruped_lib import dynamics, kinematics
 import cvxpy
 import cvxpy as cp
 import numpy as np
 import time
-from multiprocessing import Pool
+from multiprocessing import Pool, Value
 import itertools
-
 
 import matplotlib.pyplot as plt
 
-if __name__ == '__main__':
+from matplotlib import widgets
+
+if __name__ == "__main__":
     # freeze_support() # for multiprocessing?
 
-    MU = 0.5
+    MU = 1.0
     TAU_MAX = 9.0  # 5008 9:1 actuator
-    L1 = 0.10
-    L2 = 0.20
-    x_range = (-0.15, 0.15)
-    z_range = (-L1-L2, -0.01)
-    N = 30 # number of z 
-    M = 120 # number of x 
-    OUTLIER_PERCENTILE=0.95
-    length_tolerance = 0.01
+    # mu=1.0
+    # (0.15, 0.15) -> 44.5
+    # (0.14, 0.16) -> 48
+    # (0.13, 0.17) -> 51.3
+    # (0.12, 0.18) -> 52.5
+    # (0.11, 0.19) -> 52.4
+    L1 = 0.11
+    L2 = 0.19
+    x_range = (-0.15, 0.05)
+    z_range = (-L1 - L2, -0.01)
+    N = 50  # number of x options to evaluate
+    M = 100  # number of z positions to integrate over
+
+    MAX_FORCE = 225  # 30Gs of acceleration!
+    OUTLIER_PERCENTILE = 0.95
 
     config = kinematics_config.KinematicsConfig(
         abduction_offset=0.0,
@@ -41,6 +51,7 @@ if __name__ == '__main__':
     )
     static_torque_opt = static_torque_optimizer.StaticTorqueOptimizer(
         config,
+        direction=np.array([0, 0, -1]),
         mu=MU,
         tau_max=TAU_MAX,
     )
@@ -59,28 +70,62 @@ if __name__ == '__main__':
 
     for i, foot_z in enumerate(eval_zs):
         for j, launch_x in enumerate(launch_xs):
-            optimal_forces[i, j, :] = static_torque_opt.solve_for_configuration([launch_x, 0, foot_z])
+            optimal_forces[i, j, :] = static_torque_opt.solve_for_configuration(
+                np.array([launch_x, 0, foot_z])
+            )
 
     # remove outliers from the map. probably due to singularities
     # unrealistic that those forces would actually appear, mostly likely absorbed into compliance
-    max_reasonable_force = np.quantile(abs(optimal_forces), OUTLIER_PERCENTILE)
-    optimal_forces = np.clip(optimal_forces, -max_reasonable_force, max_reasonable_force)
-    vertical_delta_KE = np.sum(optimal_forces, axis=0) * dz
+    max_reasonable_force = (
+        MAX_FORCE if MAX_FORCE else np.quantile(abs(optimal_forces), OUTLIER_PERCENTILE)
+    )
+    optimal_forces = np.clip(
+        optimal_forces, -max_reasonable_force, max_reasonable_force
+    )
+    vertical_delta_KE = np.sum(optimal_forces, axis=0) * dz  # Shape: (N, 3)
+    optimal_fz_work = np.max(abs(vertical_delta_KE[:, 2]))
+    optimal_x_offset = launch_xs[np.argmax(abs(vertical_delta_KE[:, 2]))]
 
     end = time.time()
     print("optimization took: ", end - start)
 
-    fig, axs = plt.subplots(ncols=2, figsize=(16,8))
+    fig, axs = plt.subplots(ncols=2, figsize=(16, 8))
     img = axs[0].imshow(
         optimal_forces[:, :, 2],
         extent=(*x_range, *z_range),
         aspect="equal",
         origin="lower",
     )
-    # plt.pcolormesh(optimal_forces[:,:,2], extent=(*x_range,*z_range[::-1]), aspect='equal')
+
+    leg = visualization.InverseKinematicsCallback(
+        config,
+    )
+
+    feasible_force = visualization.FeasibleForcePoly(
+        config,
+        n_sample_points=40,
+        mu=MU,
+        tau_max=0.005,
+    )
+
+    cursor_widget = plot_util.CursorCallbackWidget(
+        ax=axs[0],
+        move_callbacks=[
+            leg.animated_leg_callback,
+            feasible_force.force_circle_callback,
+        ],
+        lineprops=[{"color": "k", "linewidth": 10}, {"marker": ".", "color": "r"}],
+    )
+
     fig.colorbar(img, ax=axs[0])
+    axs[0].set_title(
+        "Maximum achievable vertical force as function of leg configuration"
+    )
 
     # plt.figure()
     axs[1].plot(launch_xs, vertical_delta_KE)
     axs[1].legend(["Fx", "Fy", "Fz"])
+    axs[1].set_title(
+        f"Max fz work of {optimal_fz_work:0.2f} with x offset {optimal_x_offset:0.2f}"
+    )
     plt.show()
