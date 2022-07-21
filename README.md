@@ -7,6 +7,7 @@ git clone https://github.com/Nate711/jump-optimization.git
 # Using
 ```bash
 cd jump-optimization
+conda activate jump-opt
 python3 optimize.py
 ```
 

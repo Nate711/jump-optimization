@@ -7,7 +7,9 @@ from quadruped_lib import dynamics, kinematics
 from quadruped_lib import kinematics_config
 
 # from jump_config_optimization import static_torque_optimizer
-import static_torque_optimizer, visualization, plot_util
+import static_torque_optimizer
+import visualization
+import plot_util
 
 # from quadruped_lib import dynamics, kinematics
 import cvxpy
@@ -25,15 +27,16 @@ if __name__ == "__main__":
     # freeze_support() # for multiprocessing?
 
     MU = 1.0
-    TAU_MAX = 9.0  # 5008 9:1 actuator
+    # TAU_MAX = 9.0  # 5008 9:1 actuator
+    TAU_MAX = 4.0  # GIM4305 10:1 actuator
     # mu=1.0
     # (0.15, 0.15) -> 44.5
     # (0.14, 0.16) -> 48
     # (0.13, 0.17) -> 51.3
     # (0.12, 0.18) -> 52.5
     # (0.11, 0.19) -> 52.4
-    L1 = 0.13
-    L2 = 0.17
+    L1 = 0.095
+    L2 = 0.10
     x_range = (-0.15, 0.05)
     z_range = (-L1 - L2, -0.01)
     N = 50  # number of x options to evaluate
@@ -77,7 +80,8 @@ if __name__ == "__main__":
     # remove outliers from the map. probably due to singularities
     # unrealistic that those forces would actually appear, mostly likely absorbed into compliance
     max_reasonable_force = (
-        MAX_FORCE if MAX_FORCE else np.quantile(abs(optimal_forces), OUTLIER_PERCENTILE)
+        MAX_FORCE if MAX_FORCE else np.quantile(
+            abs(optimal_forces), OUTLIER_PERCENTILE)
     )
     optimal_forces = np.clip(
         optimal_forces, -max_reasonable_force, max_reasonable_force
@@ -108,13 +112,20 @@ if __name__ == "__main__":
         tau_max=0.005,
     )
 
+    gravity_comp_joint_torques = visualization.GravityCompensationCallback(
+        config,
+        gravity_force=15.0,  # N
+    )
+
     cursor_widget = plot_util.CursorCallbackWidget(
         ax=axs[0],
         move_callbacks=[
             leg.animated_leg_callback,
             feasible_force.force_circle_callback,
+            gravity_comp_joint_torques.gravity_compensation_callback,
         ],
-        lineprops=[{"color": "k", "linewidth": 10}, {"marker": ".", "color": "r"}],
+        lineprops=[{"color": "k", "linewidth": 10},
+                   {"marker": ".", "color": "r"}, {}],
     )
 
     fig.colorbar(img, ax=axs[0])

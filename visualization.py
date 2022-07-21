@@ -1,6 +1,6 @@
 import static_torque_optimizer
-import plot_util
-from quadruped_lib import kinematics, kinematics_config
+import statics
+from quadruped_lib import kinematics, kinematics_config, dynamics
 import numpy as np
 
 
@@ -18,7 +18,8 @@ class InverseKinematicsCallback:
         except ArithmeticError:
             return [0, 0, 0], [0, 0, 0]
         knee_position = (
-            np.array((-np.sin(hip), -np.cos(hip))) * self.config.upper_link_length
+            np.array((-np.sin(hip), -np.cos(hip))) *
+            self.config.upper_link_length
         )
         return ([0, knee_position[0], x], [0, knee_position[1], z])
 
@@ -57,3 +58,20 @@ class FeasibleForcePoly:
             )
 
         return (self.optimal_fs[:, 0] + x, self.optimal_fs[:, 2] + z)
+
+
+class GravityCompensationCallback:
+    def __init__(
+        self,
+        config: kinematics_config.KinematicsConfig,
+        gravity_force: float,
+    ):
+        self.config = config
+        self.gravity_force = gravity_force
+        self.grav_comp = statics.GravityCompensation(config=config)
+
+    def gravity_compensation_callback(self, mouse_x, mouse_y):
+        torques = self.grav_comp.gravity_compensation(
+            mouse_x, mouse_y, self.gravity_force)
+        print(f"Torques: {torques}")
+        return ([0, 0], [1, 1])
