@@ -14,12 +14,12 @@ def stride_joint_torques():
     GRAVITY_FORCE = 13.8  # N
 
     # GEOMETRY #
-    L1 = 0.095
+    L1 = 0.10
     L2 = 0.10
 
     # GAIT #
-    X_VELOCITY = 1.0  # m/s
-    GAIT_FREQ = 4.0  # Hz
+    X_VELOCITY = 0.8  # m/s
+    GAIT_FREQ = 2.0  # Hz
     STANCE_PROPORTION = 0.5  # unitless
     N_X = 100
     N_Z = 16
